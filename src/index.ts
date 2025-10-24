@@ -11,23 +11,17 @@ basekit.addField({
   i18n: {
     messages: {
       'zh-CN': {
-        'imageMethod': '图片生成方式',
-        'metLabelOne': '文生图',
-        'metLabelTwo': '图片编辑',
+        'videoMethod': '模型选择',
         'imagePrompt': '提示词',
         'refImage': '参考图片',
       },
       'en-US': {
-        'videoMethod': 'Image generation method',
-        'metLabelOne': 'Text-to-image',
-        'metLabelTwo': 'Image-to-image',
+        'videoMethod': 'Model selection',
         'imagePrompt': 'Image editing prompt',
         'refImage': 'Reference image',
       },
       'ja-JP': {
-         'videoMethod': '画像生成方式',
-        'metLabelOne': 'テキスト-to-画像',
-        'metLabelTwo': 'イメージ-to-画像',
+        'videoMethod': '画像生成方式',
         'imagePrompt': '画像編集提示詞',
         'refImage': '参考画像',
       },
@@ -50,15 +44,15 @@ basekit.addField({
   ],
 
   formItems: [ 
-    {
-      key: 'imageMethod',
-      label: t('imageMethod'),
-      component: FieldComponent.Radio,
-      defaultValue: { label: t('metLabelOne'), value: 'textToImage'},
+     {
+      key: 'videoMethod',
+      label: t('videoMethod'),
+      component: FieldComponent.SingleSelect,
+      defaultValue: { label: 'nano-banana', value: 'nano-banana'},
       props: {
         options: [
-          { label: t('metLabelOne'), value: 'textToImage'},
-          { label: t('metLabelTwo'), value: 'imageToImage'},
+           { label: 'nano-banana', value: 'nano-banana'},
+          { label: 'gemini-2.5-flash-image', value: 'gemini-2.5-flash-image'},
         ]
       },
     },
@@ -99,28 +93,9 @@ basekit.addField({
     }
 
     try {
-      console.log("==================");
-      
-      // 参数校验
-      if (((imageMethod.value === 'imageToImage' ) && !refImage)) {
-        debugLog({ type: 'error', message: "请上传参考图片", code: 400 });
-        return {
-          code: FieldCode.Success,
-          data: { id: `错误: 请上传参考图片` },
-          msg: "请上传参考图片"
-        };
-      }
 
-      if ((imageMethod.value === 'textToImage' && refImage)) {
-        debugLog({ type: 'error', message: "文生图片请不要上传参考图片", code: 400 });
-        return {
-          code: FieldCode.Success,
-          data: { id: `错误: 文生图片请不要上传参考图片` },
-          msg: "文生图片请不要上传参考图片"
-        };
-      }
 
-      const createImageUrl = imageMethod.value === 'textToImage' 
+      const createImageUrl = (!refImage || refImage.length === 0) 
         ? `http://api.xunkecloud.cn/v1/images/generations` 
         : `http://api.xunkecloud.cn/v1/images/edits`;
       
@@ -223,10 +198,19 @@ basekit.addField({
       if (!taskResp.ok) {
         const errorData = await taskResp.json().catch(() => ({}));
         console.error('API请求失败:', taskResp.status, errorData);
+        
+        // 检查HTTP错误响应中的无效令牌错误
+        if (errorData.error && errorData.error.message ) {
+          throw new Error(errorData.error.message);
+        }
+        
         throw new Error(`API请求失败: ${taskResp.status} ${taskResp.statusText}`);
       }
       
       const initialResult = await taskResp.json();
+      
+      // 检查API返回的余额耗尽错误
+      
       
       if (!initialResult || !initialResult.data || !Array.isArray(initialResult.data) || initialResult.data.length === 0) {
         throw new Error('API响应数据格式不正确或为空');
@@ -267,6 +251,45 @@ basekit.addField({
     } catch (e) {
       console.log('====error', String(e));
       debugLog({ '===999 异常错误': String(e) });
+
+       if (String(e).includes('无可用渠道')) {
+        
+        return {
+          code: FieldCode.Success, // 0 表示请求成功
+          // data 类型需与下方 resultType 定义一致
+          data:[{
+              name:  "捷径异常"+'.png',
+              content: "https://pay.xunkecloud.cn/image/unusual.png",
+              contentType: "attachment/url"
+            }] 
+        };
+      }
+      // 检查错误消息中是否包含余额耗尽的信息
+      if (String(e).includes('令牌额度已用尽')) {
+        return {
+          code: FieldCode.Success, // 0 表示请求成功
+          // data 类型需与下方 resultType 定义一致
+          data:[{
+              name:  "余额耗尽"+'.png',
+              content: "https://pay.xunkecloud.cn/image/Insufficient.png",
+              contentType: "attachment/url"
+            }] 
+        };
+      }
+       if (String(e).includes('无效的令牌')) {
+        
+        return {
+        code: FieldCode.Success, // 0 表示请求成功
+        data: [
+          {
+            "name": "无效的令牌"+'.png', // 附件名称,需要带有文件格式后缀
+            "content": "https://pay.xunkecloud.cn/image/tokenError.png", // 可通过http.Get 请求直接下载的url.
+            "contentType": "attachment/url", // 固定值
+          }
+        ],
+        }
+      }
+
       return { code: FieldCode.Error };
     }
   }
