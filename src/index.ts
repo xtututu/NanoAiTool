@@ -4,7 +4,7 @@ const { t } = field;
 const https = require("https");
 const FormData = require("form-data");
 
-const feishuDm = ['feishu.cn', 'feishucdn.com', 'larksuitecdn.com', 'larksuite.com','api.chatfire.cn','api.xunkecloud.cn'];
+const feishuDm = ['feishu.cn', 'feishucdn.com', 'larksuitecdn.com', 'larksuite.com','api.chatfire.cn','api.xunkecloud.cn', 'token.yishangcloud.cn'];
 basekit.addDomainList([...feishuDm, 'api.exchangerate-api.com']);
 
 basekit.addField({
@@ -52,7 +52,9 @@ basekit.addField({
       props: {
         options: [
            { label: 'nano-banana', value: 'nano-banana'},
-          { label: 'gemini-2.5-flash-image', value: 'gemini-2.5-flash-image'},
+           { label: 'nano-banana-pro', value: 'nano-banana-pro'},
+           { label: 'nano-banana-pro_4k', value: 'nano-banana-pro_4k'},
+
         ]
       },
     },
@@ -82,7 +84,7 @@ basekit.addField({
   },
 
   execute: async (formItemParams, context) => {
-    const { imageMethod, imagePrompt, refImage } = formItemParams;
+    const { videoMethod, imagePrompt, refImage } = formItemParams;
     let englishPrompt = imagePrompt;
 
     function debugLog(arg: any) {
@@ -94,100 +96,45 @@ basekit.addField({
 
     try {
 
-
-      const createImageUrl = (!refImage || refImage.length === 0) 
-        ? `http://api.xunkecloud.cn/v1/images/generations` 
-        : `http://api.xunkecloud.cn/v1/images/edits`;
+const createImageUrl = `http://api.xunkecloud.cn/v1/images/generations` 
       
-      console.log("createImageUrl:", createImageUrl);
-
-      // 远程图片转Buffer工具函数
-      async function remoteUrlToBuffer(imageUrl: string): Promise<Buffer> {
-        return new Promise((resolve, reject) => {
-          const request = https.get(imageUrl, (response) => {
-          response.setTimeout(30000);
-            if (response.statusCode !== 200) {
-              reject(new Error(`获取图片失败：状态码 ${response.statusCode}`));
-              response.resume();
-              return;
-            }
-
-            const chunks: Buffer[] = [];
-            response.on("data", (chunk) => chunks.push(chunk));
-            response.on("end", () => {
-              const buffer = Buffer.concat(chunks);
-              const contentType = response.headers["content-type"];
-              if (!contentType?.startsWith("image/")) {
-                reject(new Error("远程资源不是图片格式"));
-                return;
-              }
-              resolve(buffer);
-            });
-          });
-
-          request.on("timeout", () => {
-            request.destroy();
-            reject(new Error("获取图片超时（30秒）"));
-          });
-
-          request.on("error", (error) => {
-            reject(new Error(`请求图片出错：${error.message}`));
-          });
+      
+      // 提取图片链接函数
+      function extractImageUrls(imageData: any): string[] {
+        
+        if (!imageData || !Array.isArray(imageData)) {
+          return [];
+        }
+        
+        const urls: string[] = [];
+        
+        imageData.forEach((item: any) => {
+          if (item.tmp_url) {
+            // 清理URL中的反引号和空格
+            const cleanUrl = item.tmp_url.replace(/[`\s]/g, '');
+            urls.push(cleanUrl);
+          }
         });
+        
+        return urls;
       }
 
       let taskResp;
       
-      // 图片编辑/图生图处理逻辑
-      if (createImageUrl.includes('images/edits')) {
-        
-        // 获取参考图片的Buffer
-        const formData = new FormData();
-        debugLog({ message: `开始上传图片，参考图片数量: ${refImage.length}` });
-        for (let i = 0; i < refImage.length; i++) {
-          const imageBuffer = await remoteUrlToBuffer(refImage[i].tmp_url);
-          formData.append(`image`, imageBuffer, {
-            filename: `reference-${Date.now()}-${i}.webp`,
-            contentType: "image/webp",
-            knownLength: imageBuffer.length
-          });
-        }
-        formData.append("prompt", imagePrompt);
-        formData.append("model", "nano-image");
-        formData.append("response_format", "b64_json");
-        
-        // 准备请求选项（已修复BodyInit类型错误）
-        const editRequestOptions = {
-          method: 'POST',
-          headers: {
-            ...formData.getHeaders(),
-            "User-Agent": "PostmanRuntime/7.36.3"
-          },
-          body: formData as unknown as BodyInit,
-          timeout: 300000 // 5分钟超时
-        };
-        
-
-        debugLog({ message: "开始发送图片编辑请求" });
-        console.log('editRequestOptions:', editRequestOptions);
-        
-        
-        taskResp = await context.fetch(createImageUrl, editRequestOptions, 'auth_id_1');
-      } 
-      // 文生图处理逻辑
-      else {
+    
         const jsonRequestOptions = {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
-            model: "nano-image-hd",
+            model: videoMethod.value,
             "prompt": imagePrompt,
+            "image": extractImageUrls(refImage),
+            "response_format":"url"
           })
         };
         
-        console.log('jsonRequestOptions:', jsonRequestOptions);
         taskResp = await context.fetch(createImageUrl, jsonRequestOptions, 'auth_id_1');
-      }
+      
 
       if (!taskResp) {
         throw new Error('请求未能成功发送');
@@ -208,6 +155,8 @@ basekit.addField({
       }
       
       const initialResult = await taskResp.json();
+
+      console.log('initialResult:', initialResult.data);
       
       // 检查API返回的余额耗尽错误
       
@@ -216,13 +165,36 @@ basekit.addField({
         throw new Error('API响应数据格式不正确或为空');
       }
       
-      let imageUrl = initialResult.data[0].url;
-      console.log('imageUrl:', imageUrl);
       
-      if (!imageUrl) {
+      let chatfireNanoUrl = initialResult.data[0].url;
+      
+      
+      if (!chatfireNanoUrl) {
         throw new Error('未获取到图片URL');
       }
       
+      // 调用上传接口
+      
+        const uploadUrl = 'http://token.yishangcloud.cn/api/image/upload';
+        const uploadOptions = {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            image_url: chatfireNanoUrl
+          })
+        };
+        
+        debugLog({'=2 调用上传接口': {uploadUrl, chatfireNanoUrl}});
+        let uploadResp = await context.fetch(uploadUrl, uploadOptions, 'auth_id_1');
+
+        const uploadResult = await uploadResp.json();
+        
+       
+
+      let imageUrl = "http://token.yishangcloud.cn"+uploadResult.image_url;
+
+      console.log('imageUrl:', imageUrl);
+
       const url = [
         {
           type: 'url',
