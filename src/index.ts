@@ -1,10 +1,8 @@
 import { basekit, FieldType, field, FieldComponent, FieldCode, AuthorizationType } from '@lark-opdev/block-basekit-server-api';
-import { BodyInit } from 'node-fetch'; // 导入BodyInit类型
 const { t } = field;
-const https = require("https");
-const FormData = require("form-data");
 
-const feishuDm = ['feishu.cn', 'feishucdn.com', 'larksuitecdn.com', 'larksuite.com','api.chatfire.cn','api.xunkecloud.cn', 'token.yishangcloud.cn'];
+
+const feishuDm = ['feishu.cn', 'feishucdn.com', 'larksuitecdn.com', 'larksuite.com','api.xunkecloud.cn',];
 basekit.addDomainList([...feishuDm, 'api.exchangerate-api.com']);
 
 basekit.addField({
@@ -14,16 +12,19 @@ basekit.addField({
         'videoMethod': '模型选择',
         'imagePrompt': '提示词',
         'refImage': '参考图片',
+        'modelBrand':'迅客',
       },
       'en-US': {
         'videoMethod': 'Model selection',
         'imagePrompt': 'Image editing prompt',
         'refImage': 'Reference image',
+        'modelBrand':'Xunke',
       },
       'ja-JP': {
         'videoMethod': '画像生成方式',
         'imagePrompt': '画像編集提示詞',
         'refImage': '参考画像',
+        'modelBrand':'迅客',
       },
     }
   },
@@ -48,13 +49,12 @@ basekit.addField({
       key: 'videoMethod',
       label: t('videoMethod'),
       component: FieldComponent.SingleSelect,
-      defaultValue: { label: 'nano-banana', value: 'nano-banana'},
+      defaultValue: { label: t('modelBrand') +' Na', value: 'nano-banana'},
       props: {
         options: [
-           { label: 'nano-banana', value: 'nano-banana'},
-           { label: 'nano-banana-pro', value: 'nano-banana-pro'},
-           { label: 'nano-banana-pro_4k', value: 'nano-banana-pro_4k'},
-
+          { label: t('modelBrand') +' Na', value: 'nano-banana'},
+          { label: t('modelBrand') +' Na-Pro', value: 'nano-banana-pro'},
+          { label: t('modelBrand') +' Na-Pro-4k', value: 'nano-banana-pro_4k'}
         ]
       },
     },
@@ -93,8 +93,25 @@ basekit.addField({
         ...arg
       }));
     }
+      const createErrorResponse = (name: string, videoUrl: string) => ({
+      code: FieldCode.Success,
+      data: [{
+        name: `${name}.mp4`,
+        content: videoUrl,
+        contentType: 'attachment/url'
+      }]
+    });
+     const ERROR_VIDEOS = {
+      DEFAULT: 'https://pay.xunkecloud.cn/image/Wrong.mp4',
+      OVERRUN: 'https://pay.xunkecloud.cn/image/Overrun.mp4',
+      NO_CHANNEL: 'https://pay.xunkecloud.cn/image/unusual.mp4',
+      INSUFFICIENT: 'https://pay.xunkecloud.cn/image/Insufficient.mp4',
+      INVALID_TOKEN: 'https://pay.xunkecloud.cn/image/tokenError.mp4'
+    };
 
     try {
+      // 创建错误响应的辅助函数
+  
 
 const createImageUrl = `http://api.xunkecloud.cn/v1/images/generations` 
       
@@ -132,6 +149,9 @@ const createImageUrl = `http://api.xunkecloud.cn/v1/images/generations`
             "response_format":"url"
           })
         };
+
+        console.log('jsonRequestOptions:', jsonRequestOptions);
+        
         
         taskResp = await context.fetch(createImageUrl, jsonRequestOptions, 'auth_id_1');
       
@@ -148,6 +168,7 @@ const createImageUrl = `http://api.xunkecloud.cn/v1/images/generations`
         
         // 检查HTTP错误响应中的无效令牌错误
         if (errorData.error && errorData.error.message ) {
+          
           throw new Error(errorData.error.message);
         }
         
@@ -166,32 +187,34 @@ const createImageUrl = `http://api.xunkecloud.cn/v1/images/generations`
       }
       
       
-      let chatfireNanoUrl = initialResult.data[0].url;
-      
-      
-      if (!chatfireNanoUrl) {
-        throw new Error('未获取到图片URL');
-      }
-      
-      // 调用上传接口
-      
-        const uploadUrl = 'http://token.yishangcloud.cn/api/image/upload';
-        const uploadOptions = {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            image_url: chatfireNanoUrl
-          })
-        };
-        
-        debugLog({'=2 调用上传接口': {uploadUrl, chatfireNanoUrl}});
-        let uploadResp = await context.fetch(uploadUrl, uploadOptions, 'auth_id_1');
+      // let chatfireNanoUrl = initialResult.data[0].url;
+      let imageUrl = initialResult.data[0].url;
 
-        const uploadResult = await uploadResp.json();
+      
+      
+      // if (!chatfireNanoUrl) {
+      //   throw new Error('未获取到图片URL');
+      // }
+      
+      // // 调用上传接口
+      
+      //   const uploadUrl = 'http://api.xunkecloud.cn/api/image/upload';
+      //   const uploadOptions = {
+      //     method: 'POST',
+      //     headers: {'Content-Type': 'application/json'},
+      //     body: JSON.stringify({
+      //       image_url: chatfireNanoUrl
+      //     })
+      //   };
+        
+      //   debugLog({'=2 调用上传接口': {uploadUrl, chatfireNanoUrl}});
+      //   let uploadResp = await context.fetch(uploadUrl, uploadOptions, 'auth_id_1');
+
+      //   const uploadResult = await uploadResp.json();
         
        
 
-      let imageUrl = "http://token.yishangcloud.cn"+uploadResult.image_url;
+      // let imageUrl = "http://api.xunkecloud.cn"+uploadResult.image_url;
 
       console.log('imageUrl:', imageUrl);
 
@@ -220,49 +243,26 @@ const createImageUrl = `http://api.xunkecloud.cn/v1/images/generations`
           })).filter((v) => v)
         };
 
-    } catch (e) {
-      console.log('====error', String(e));
-      debugLog({ '===999 异常错误': String(e) });
+    } catch (error: any) {
+     const errorMessage = String(error);
+      debugLog({ '异常错误': errorMessage });
 
-       if (String(e).includes('无可用渠道')) {
-        
-        return {
-          code: FieldCode.Success, // 0 表示请求成功
-          // data 类型需与下方 resultType 定义一致
-          data:[{
-              name:  "捷径异常"+'.png',
-              content: "https://pay.xunkecloud.cn/image/unusual.png",
-              contentType: "attachment/url"
-            }] 
-        };
-      }
-      // 检查错误消息中是否包含余额耗尽的信息
-      if (String(e).includes('令牌额度已用尽')) {
-        return {
-          code: FieldCode.Success, // 0 表示请求成功
-          // data 类型需与下方 resultType 定义一致
-          data:[{
-              name:  "余额耗尽"+'.png',
-              content: "https://pay.xunkecloud.cn/image/Insufficient.png",
-              contentType: "attachment/url"
-            }] 
-        };
-      }
-       if (String(e).includes('无效的令牌')) {
-        
-        return {
-        code: FieldCode.Success, // 0 表示请求成功
-        data: [
-          {
-            "name": "无效的令牌"+'.png', // 附件名称,需要带有文件格式后缀
-            "content": "https://pay.xunkecloud.cn/image/tokenError.png", // 可通过http.Get 请求直接下载的url.
-            "contentType": "attachment/url", // 固定值
-          }
-        ],
-        }
+      // 根据错误类型返回相应的错误视频
+      if (errorMessage.includes('无可用渠道')) {
+        debugLog({ message: '无可用渠道', errorType: '渠道错误', errorMessage });
+        return createErrorResponse('捷径异常', ERROR_VIDEOS.NO_CHANNEL);
+      } else if (errorMessage.includes('令牌额度已用尽')) {
+        debugLog({ message: '令牌额度已用尽', errorType: '余额不足', errorMessage });
+        return createErrorResponse('余额耗尽', ERROR_VIDEOS.INSUFFICIENT);
+      } else if (errorMessage.includes('无效的令牌')) {
+        debugLog({ message: '无效的令牌', errorType: '令牌错误', errorMessage });
+        return createErrorResponse('无效的令牌', ERROR_VIDEOS.INVALID_TOKEN);
       }
 
-      return { code: FieldCode.Error };
+      // 未知错误
+      return {
+        code: FieldCode.Error
+      };
     }
   }
 });
